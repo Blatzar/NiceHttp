@@ -1,4 +1,4 @@
-package niceHttp
+package com.lagradost.nicehttp
 
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
