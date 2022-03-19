@@ -6,7 +6,8 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.NiceHttp">
+        android:theme="@style/Theme.NiceHttp"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"

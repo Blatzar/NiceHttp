@@ -1,5 +1,6 @@
 package com.lagradost.nicehttp
 
+import android.annotation.SuppressLint
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
@@ -213,7 +214,8 @@ class CacheInterceptor : Interceptor {
 
 // https://stackoverflow.com/a/59322754
 fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
-    val naiveTrustManager = object : X509TrustManager {
+    val naiveTrustManager = @SuppressLint("CustomX509TrustManager")
+    object : X509TrustManager {
         override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
         override fun checkClientTrusted(certs: Array<X509Certificate>, authType: String) = Unit
         override fun checkServerTrusted(certs: Array<X509Certificate>, authType: String) = Unit
