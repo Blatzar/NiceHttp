@@ -1,12 +1,12 @@
 apply plugin: 'com.android.library'
 
 android {
-    compileSdkVersion 30
+    compileSdkVersion 31
     buildToolsVersion "30.0.3"
 
     defaultConfig {
         minSdkVersion 21
-        targetSdkVersion 30
+        targetSdkVersion 31
         versionCode 1
         versionName '0.1.0'
     }
@@ -37,12 +37,12 @@ dependencies {
 //    api 'org.apache.commons:commons-math3:3.6.1'
 
     // Parsing HTML
-    implementation 'org.jsoup:jsoup:1.14.3'
+    api 'org.jsoup:jsoup:1.14.3'
 
     // Parsing JSON
-    implementation "com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1"
+    api "com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1"
 
     // Networking
-    implementation "com.squareup.okhttp3:okhttp:5.0.0-alpha.6"
-    implementation "com.squareup.okhttp3:okhttp-dnsoverhttps:5.0.0-alpha.6"
+    api "com.squareup.okhttp3:okhttp:5.0.0-alpha.6"
+    api "com.squareup.okhttp3:okhttp-dnsoverhttps:5.0.0-alpha.6"
 }
