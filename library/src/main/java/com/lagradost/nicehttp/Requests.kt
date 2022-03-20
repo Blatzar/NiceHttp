@@ -69,13 +69,23 @@ private val Request.cookies: Map<String, String>
 class NiceResponse(
     val okhttpResponse: Response
 ) {
-    /** Lazy, initialized on use. */
+    /** Lazy, initialized on use. Returns empty string on null. */
     val text by lazy { okhttpResponse.body?.string() ?: "" }
     val url by lazy { okhttpResponse.request.url.toString() }
     val cookies by lazy { okhttpResponse.cookies }
     val body by lazy { okhttpResponse.body }
+
+    /** Return code */
     val code = okhttpResponse.code
     val headers = okhttpResponse.headers
+
+    /** Size, as reported by Content-Length */
+    val size by lazy {
+        (okhttpResponse.headers["Content-Length"]
+            ?: okhttpResponse.headers["content-length"])?.toLongOrNull()
+    }
+    val isSuccessful = okhttpResponse.isSuccessful
+    /** As parsed by Jsoup.parse(text) */
     val document: Document by lazy { Jsoup.parse(text) }
 
     /** Same as using mapper.readValue<T>() */
@@ -83,6 +93,7 @@ class NiceResponse(
         return Requests.mapper.readValue(this.text)
     }
 
+    /** Only prints the return body */
     override fun toString(): String {
         return text
     }
@@ -134,7 +145,7 @@ private fun getCache(cacheTime: Int, cacheUnit: TimeUnit): CacheControl {
 /**
  * Referer > Set headers > Set getCookies > Default headers > Default Cookies
  */
-fun getHeaders(
+private fun getHeaders(
     headers: Map<String, String>,
     referer: String?,
     cookie: Map<String, String>
@@ -150,7 +161,8 @@ fun getHeaders(
     return tempHeaders.toHeaders()
 }
 
-private fun postRequestCreator(
+fun requestCreator(
+    method: String,
     url: String,
     headers: Map<String, String> = emptyMap(),
     referer: String? = null,
@@ -164,41 +176,7 @@ private fun postRequestCreator(
         .url(addParamsToUrl(url, params))
         .cacheControl(getCache(cacheTime, cacheUnit))
         .headers(getHeaders(headers, referer, cookies))
-        .post(getData(data))
-        .build()
-}
-
-private fun getRequestCreator(
-    url: String,
-    headers: Map<String, String> = emptyMap(),
-    referer: String? = null,
-    params: Map<String, String> = emptyMap(),
-    cookies: Map<String, String> = emptyMap(),
-    cacheTime: Int = DEFAULT_TIME,
-    cacheUnit: TimeUnit = DEFAULT_TIME_UNIT
-): Request {
-    return Request.Builder()
-        .url(addParamsToUrl(url, params))
-        .cacheControl(getCache(cacheTime, cacheUnit))
-        .headers(getHeaders(headers, referer, cookies))
-        .build()
-}
-
-private fun putRequestCreator(
-    url: String,
-    headers: Map<String, String>,
-    referer: String?,
-    params: Map<String, String?>,
-    cookies: Map<String, String>,
-    data: Map<String, String?>,
-    cacheTime: Int,
-    cacheUnit: TimeUnit
-): Request {
-    return Request.Builder()
-        .url(addParamsToUrl(url, params))
-        .cacheControl(getCache(cacheTime, cacheUnit))
-        .headers(getHeaders(headers, referer, cookies))
-        .put(getData(data))
+        .method(method, getData(data))
         .build()
 }
 
@@ -237,12 +215,16 @@ open class Requests(var baseClient: OkHttpClient = OkHttpClient()) {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false).build()
     }
 
-    fun get(
+
+    // Regretful copy paste function args, but I am unsure how to do it otherwise
+    fun custom(
+        method: String,
         url: String,
         headers: Map<String, String> = emptyMap(),
         referer: String? = null,
         params: Map<String, String> = emptyMap(),
         cookies: Map<String, String> = emptyMap(),
+        data: Any? = DEFAULT_DATA,
         allowRedirects: Boolean = true,
         cacheTime: Int = DEFAULT_TIME,
         cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
@@ -264,9 +246,33 @@ open class Requests(var baseClient: OkHttpClient = OkHttpClient()) {
 
         if (interceptor != null) client.addInterceptor(interceptor)
         val request =
-            getRequestCreator(url, headers, referer, params, cookies, cacheTime, cacheUnit)
+            requestCreator(
+                method, url, headers, referer, params,
+                cookies, data, cacheTime, cacheUnit
+            )
         val response = client.build().newCall(request).execute()
         return NiceResponse(response)
+    }
+
+
+    fun get(
+        url: String,
+        headers: Map<String, String> = mapOf(),
+        referer: String? = null,
+        params: Map<String, String> = mapOf(),
+        cookies: Map<String, String> = mapOf(),
+        data: Any? = DEFAULT_DATA,
+        allowRedirects: Boolean = true,
+        cacheTime: Int = DEFAULT_TIME,
+        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        timeout: Long = 0L,
+        interceptor: Interceptor? = null,
+        verify: Boolean = true
+    ): NiceResponse {
+        return custom(
+            "GET", url, headers, referer, params, cookies, data,
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+        )
     }
 
     fun post(
@@ -280,21 +286,13 @@ open class Requests(var baseClient: OkHttpClient = OkHttpClient()) {
         cacheTime: Int = DEFAULT_TIME,
         cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
         timeout: Long = 0L,
+        interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
-        val client = baseClient
-            .newBuilder()
-            .followRedirects(allowRedirects)
-            .followSslRedirects(allowRedirects)
-            .addNetworkInterceptor(CacheInterceptor())
-            .callTimeout(timeout, TimeUnit.SECONDS)
-
-        if (!verify) client.ignoreAllSSLErrors()
-
-        val request =
-            postRequestCreator(url, headers, referer, params, cookies, data, cacheTime, cacheUnit)
-        val response = client.build().newCall(request).execute()
-        return NiceResponse(response)
+        return custom(
+            "POST", url, headers, referer, params, cookies, data,
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+        )
     }
 
     fun put(
@@ -308,19 +306,94 @@ open class Requests(var baseClient: OkHttpClient = OkHttpClient()) {
         cacheTime: Int = DEFAULT_TIME,
         cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
         timeout: Long = 0L,
+        interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
-        val client = baseClient
-            .newBuilder()
-            .followRedirects(allowRedirects)
-            .followSslRedirects(allowRedirects)
-            .addNetworkInterceptor(CacheInterceptor())
-            .callTimeout(timeout, TimeUnit.SECONDS)
-
-        if (!verify) client.ignoreAllSSLErrors()
-        val request =
-            putRequestCreator(url, headers, referer, params, cookies, data, cacheTime, cacheUnit)
-        val response = client.build().newCall(request).execute()
-        return NiceResponse(response)
+        return custom(
+            "PUT", url, headers, referer, params, cookies, data,
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+        )
     }
+
+    fun delete(
+        url: String,
+        headers: Map<String, String> = mapOf(),
+        referer: String? = null,
+        params: Map<String, String> = mapOf(),
+        cookies: Map<String, String> = mapOf(),
+        data: Any? = DEFAULT_DATA,
+        allowRedirects: Boolean = true,
+        cacheTime: Int = DEFAULT_TIME,
+        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        timeout: Long = 0L,
+        interceptor: Interceptor? = null,
+        verify: Boolean = true
+    ): NiceResponse {
+        return custom(
+            "DELETE", url, headers, referer, params, cookies, data,
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+        )
+    }
+
+
+    fun head(
+        url: String,
+        headers: Map<String, String> = mapOf(),
+        referer: String? = null,
+        params: Map<String, String> = mapOf(),
+        cookies: Map<String, String> = mapOf(),
+        data: Map<String, String?> = DEFAULT_DATA,
+        allowRedirects: Boolean = true,
+        cacheTime: Int = DEFAULT_TIME,
+        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        timeout: Long = 0L,
+        interceptor: Interceptor? = null,
+        verify: Boolean = true
+    ): NiceResponse {
+        return custom(
+            "HEAD", url, headers, referer, params, cookies, data,
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+        )
+    }
+
+    fun patch(
+        url: String,
+        headers: Map<String, String> = mapOf(),
+        referer: String? = null,
+        params: Map<String, String> = mapOf(),
+        cookies: Map<String, String> = mapOf(),
+        data: Any? = DEFAULT_DATA,
+        allowRedirects: Boolean = true,
+        cacheTime: Int = DEFAULT_TIME,
+        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        timeout: Long = 0L,
+        interceptor: Interceptor? = null,
+        verify: Boolean = true
+    ): NiceResponse {
+        return custom(
+            "PATCH", url, headers, referer, params, cookies, data,
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+        )
+    }
+
+    fun options(
+        url: String,
+        headers: Map<String, String> = mapOf(),
+        referer: String? = null,
+        params: Map<String, String> = mapOf(),
+        cookies: Map<String, String> = mapOf(),
+        data: Any? = DEFAULT_DATA,
+        allowRedirects: Boolean = true,
+        cacheTime: Int = DEFAULT_TIME,
+        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        timeout: Long = 0L,
+        interceptor: Interceptor? = null,
+        verify: Boolean = true
+    ): NiceResponse {
+        return custom(
+            "OPTIONS", url, headers, referer, params, cookies, data,
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+        )
+    }
+
 }

@@ -8,10 +8,6 @@ Featuring:
 - Json parsing using jackson
 - Easy functions akin to python requests
 
-Currently, lacking:
-
-- Requests beyond get, post and put
-
 ## Getting started
 
 ### Setup
