@@ -45,7 +45,6 @@ class Session(
 private const val DEFAULT_TIME = 0
 private val DEFAULT_TIME_UNIT = TimeUnit.MINUTES
 private const val DEFAULT_USER_AGENT = "NiceHttp"
-private val DEFAULT_HEADERS = mapOf("user-agent" to DEFAULT_USER_AGENT)
 private val DEFAULT_DATA: Map<String, String> = mapOf()
 private val DEFAULT_COOKIES: Map<String, String> = mapOf()
 private val DEFAULT_REFERER: String? = null
@@ -85,6 +84,7 @@ class NiceResponse(
             ?: okhttpResponse.headers["content-length"])?.toLongOrNull()
     }
     val isSuccessful = okhttpResponse.isSuccessful
+
     /** As parsed by Jsoup.parse(text) */
     val document: Document by lazy { Jsoup.parse(text) }
 
@@ -157,7 +157,7 @@ private fun getHeaders(
             "Cookie" to cookieHeaders.entries.joinToString(" ") {
                 "${it.key}=${it.value};"
             }) else mapOf()
-    val tempHeaders = (DEFAULT_HEADERS + headers + cookieMap + refererMap)
+    val tempHeaders = (headers + cookieMap + refererMap)
     return tempHeaders.toHeaders()
 }
 
@@ -209,14 +209,25 @@ fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
     return this
 }
 
-open class Requests(var baseClient: OkHttpClient = OkHttpClient()) {
+/**
+ * @param baseClient base okhttp client used for all requests. Use this to get cache.
+ * @param defaultHeaders base headers present in all requests, will get overwritten by custom headers.
+ * Includes the NiceHttp user agent by default.
+ * */
+open class Requests(
+    var baseClient: OkHttpClient = OkHttpClient(),
+    var defaultHeaders: Map<String, String> = mapOf("user-agent" to DEFAULT_USER_AGENT),
+) {
     companion object {
         val mapper: JsonMapper = JsonMapper.builder().addModule(KotlinModule())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false).build()
     }
 
-
     // Regretful copy paste function args, but I am unsure how to do it otherwise
+    /**
+     * @param cacheUnit defaults to Minutes
+     * @param verify false to ignore SSL errors
+     * */
     fun custom(
         method: String,
         url: String,
@@ -247,7 +258,7 @@ open class Requests(var baseClient: OkHttpClient = OkHttpClient()) {
         if (interceptor != null) client.addInterceptor(interceptor)
         val request =
             requestCreator(
-                method, url, headers, referer, params,
+                method, url, defaultHeaders + headers, referer, params,
                 cookies, data, cacheTime, cacheUnit
             )
         val response = client.build().newCall(request).execute()

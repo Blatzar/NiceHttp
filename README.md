@@ -20,7 +20,7 @@ maven { url 'https://jitpack.io' }
 ```
 In app/build.gradle dependencies:
 ```groovy
-implementation 'com.github.Blatzar:NiceHttp:0.1.2'
+implementation 'com.github.Blatzar:NiceHttp:0.1.3'
 ```
 
 ### Scraping a document
