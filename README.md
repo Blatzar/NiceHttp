@@ -14,7 +14,7 @@ Featuring:
 
 ### Setup
 
-In app/build.gradle repositories:
+In build.gradle repositories:
 ```groovy
 maven { url 'https://jitpack.io' }
 ```
