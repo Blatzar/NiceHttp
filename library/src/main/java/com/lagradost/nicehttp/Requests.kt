@@ -116,7 +116,7 @@ private fun getData(data: Any?, method: String): RequestBody? {
             if (formattedData.isEmpty())
                 null
             else {
-                val builder = MultipartBody.Builder()
+                val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
                 formattedData.forEach {
                     builder.addFormDataPart(it.first, it.second)
                 }
