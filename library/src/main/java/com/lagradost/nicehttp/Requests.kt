@@ -99,20 +99,36 @@ class NiceResponse(
     }
 }
 
-private fun getData(data: Any?): RequestBody {
-    return when (data) {
-        null -> FormBody.Builder().build()
+val mustHaveBody = listOf("POST", "PUT")
+val cantHaveBody = listOf("GET", "HEAD")
+private fun getData(data: Any?, method: String): RequestBody? {
+    // Can't have a body (errors). Not possible with the normal commands, but is with custom()
+    if (cantHaveBody.contains(method.uppercase())) return null
+    val body = when (data) {
+        null -> null
         is Map<*, *> -> {
-            val builder = FormBody.Builder()
-            data.forEach {
-                if (it.key is String && it.value is String)
-                    builder.add(it.key as String, it.value as String)
+            val formattedData = data.mapNotNull {
+                val key = it.key as? String ?: return@mapNotNull null
+                val value = it.value as? String ?: return@mapNotNull null
+                key to value
             }
-            builder.build()
+            // Multipart body must have at least one part.
+            if (formattedData.isEmpty())
+                null
+            else {
+                val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+                formattedData.forEach {
+                    builder.addFormDataPart(it.first, it.second)
+                }
+                builder.build()
+            }
         }
         else ->
             data.toString().toRequestBody("text/plain;charset=UTF-8".toMediaTypeOrNull())
     }
+    // Post must have a body!
+    return body ?: if (mustHaveBody.contains(method.uppercase()))
+        FormBody.Builder().build() else null
 }
 
 // https://github.com, id=test -> https://github.com?id=test
@@ -176,7 +192,7 @@ fun requestCreator(
         .url(addParamsToUrl(url, params))
         .cacheControl(getCache(cacheTime, cacheUnit))
         .headers(getHeaders(headers, referer, cookies))
-        .method(method, getData(data))
+        .method(method, getData(data, method))
         .build()
 }
 
@@ -225,8 +241,11 @@ open class Requests(
 
     // Regretful copy paste function args, but I am unsure how to do it otherwise
     /**
-     * @param cacheUnit defaults to Minutes
+     * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
+     * @param data Map<String?, String?> or String, all keys or values which is null
+     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * @param timeout timeout in seconds
      * */
     fun custom(
         method: String,
@@ -265,14 +284,17 @@ open class Requests(
         return NiceResponse(response)
     }
 
-
+    /**
+     * @param cacheUnit defaults to minutes
+     * @param verify false to ignore SSL errors
+     * @param timeout timeout in seconds
+     * */
     fun get(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = DEFAULT_DATA,
         allowRedirects: Boolean = true,
         cacheTime: Int = DEFAULT_TIME,
         cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
@@ -281,11 +303,18 @@ open class Requests(
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "GET", url, headers, referer, params, cookies, data,
+            "GET", url, headers, referer, params, cookies, null,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
 
+    /**
+     * @param cacheUnit defaults to minutes
+     * @param verify false to ignore SSL errors
+     * @param data Map<String?, String?> or String, all keys or values which is null
+     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * @param timeout timeout in seconds
+     * */
     fun post(
         url: String,
         headers: Map<String, String> = mapOf(),
@@ -306,13 +335,20 @@ open class Requests(
         )
     }
 
+    /**
+     * @param cacheUnit defaults to minutes
+     * @param verify false to ignore SSL errors
+     * @param data Map<String?, String?> or String, all keys or values which is null
+     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * @param timeout timeout in seconds
+     * */
     fun put(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Map<String, String?> = DEFAULT_DATA,
+        data: Any? = DEFAULT_DATA,
         allowRedirects: Boolean = true,
         cacheTime: Int = DEFAULT_TIME,
         cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
@@ -326,6 +362,13 @@ open class Requests(
         )
     }
 
+    /**
+     * @param cacheUnit defaults to minutes
+     * @param verify false to ignore SSL errors
+     * @param data Map<String?, String?> or String, all keys or values which is null
+     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * @param timeout timeout in seconds
+     * */
     fun delete(
         url: String,
         headers: Map<String, String> = mapOf(),
@@ -346,14 +389,17 @@ open class Requests(
         )
     }
 
-
+    /**
+     * @param cacheUnit defaults to minutes
+     * @param verify false to ignore SSL errors
+     * @param timeout timeout in seconds
+     * */
     fun head(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Map<String, String?> = DEFAULT_DATA,
         allowRedirects: Boolean = true,
         cacheTime: Int = DEFAULT_TIME,
         cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
@@ -362,11 +408,18 @@ open class Requests(
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "HEAD", url, headers, referer, params, cookies, data,
+            "HEAD", url, headers, referer, params, cookies, null,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
 
+    /**
+     * @param cacheUnit defaults to minutes
+     * @param verify false to ignore SSL errors
+     * @param data Map<String?, String?> or String, all keys or values which is null
+     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * @param timeout timeout in seconds
+     * */
     fun patch(
         url: String,
         headers: Map<String, String> = mapOf(),
@@ -387,6 +440,13 @@ open class Requests(
         )
     }
 
+    /**
+     * @param cacheUnit defaults to minutes
+     * @param verify false to ignore SSL errors
+     * @param data Map<String?, String?> or String, all keys or values which is null
+     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * @param timeout timeout in seconds
+     * */
     fun options(
         url: String,
         headers: Map<String, String> = mapOf(),
