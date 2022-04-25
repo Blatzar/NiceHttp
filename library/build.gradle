@@ -2,14 +2,14 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 31
+    compileSdkVersion 32
     buildToolsVersion "30.0.3"
 
     defaultConfig {
         minSdkVersion 21
-        targetSdkVersion 31
-        versionCode 7
-        versionName '0.1.6'
+        targetSdkVersion 32
+        versionCode 8
+        versionName '0.1.7'
     }
 
     buildTypes {
@@ -34,4 +34,7 @@ dependencies {
     // Networking
     api "com.squareup.okhttp3:okhttp:5.0.0-alpha.6"
     api "com.squareup.okhttp3:okhttp-dnsoverhttps:5.0.0-alpha.6"
+
+    // Async
+    api 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.1-native-mt'
 }
