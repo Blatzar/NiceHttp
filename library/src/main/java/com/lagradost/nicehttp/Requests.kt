@@ -5,12 +5,16 @@ import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CompletionHandler
+import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.*
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.io.IOException
 import java.net.URI
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
@@ -18,6 +22,7 @@ import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
+import kotlin.coroutines.resumeWithException
 
 class Session(
     client: OkHttpClient
@@ -225,6 +230,31 @@ fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
     return this
 }
 
+//Provides async-able Calls
+class ContinuationCallback(
+    private val call: Call,
+    private val continuation: CancellableContinuation<Response>
+) : Callback, CompletionHandler {
+
+
+    override fun onResponse(call: Call, response: Response) {
+        continuation.resume(response, null)
+    }
+
+    override fun onFailure(call: Call, e: IOException) {
+        if (!call.isCanceled()) {
+            continuation.resumeWithException(e)
+        }
+    }
+
+    override fun invoke(cause: Throwable?) {
+        try {
+            call.cancel()
+        } catch (_: Throwable) {
+        }
+    }
+}
+
 /**
  * @param baseClient base okhttp client used for all requests. Use this to get cache.
  * @param defaultHeaders base headers present in all requests, will get overwritten by custom headers.
@@ -237,6 +267,14 @@ open class Requests(
     companion object {
         val mapper: JsonMapper = JsonMapper.builder().addModule(KotlinModule())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false).build()
+
+        suspend inline fun Call.await(): Response {
+            return suspendCancellableCoroutine { continuation ->
+                val callback = ContinuationCallback(this, continuation)
+                enqueue(callback)
+                continuation.invokeOnCancellation(callback)
+            }
+        }
     }
 
     // Regretful copy paste function args, but I am unsure how to do it otherwise
@@ -247,7 +285,7 @@ open class Requests(
      * will be skipped. All other objects will be interpreted as strings using .toString()
      * @param timeout timeout in seconds
      * */
-    fun custom(
+    suspend fun custom(
         method: String,
         url: String,
         headers: Map<String, String> = emptyMap(),
@@ -280,7 +318,7 @@ open class Requests(
                 method, url, defaultHeaders + headers, referer, params,
                 cookies, data, cacheTime, cacheUnit
             )
-        val response = client.build().newCall(request).execute()
+        val response = client.build().newCall(request).await()
         return NiceResponse(response)
     }
 
@@ -289,7 +327,7 @@ open class Requests(
      * @param verify false to ignore SSL errors
      * @param timeout timeout in seconds
      * */
-    fun get(
+    suspend fun get(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
@@ -315,7 +353,7 @@ open class Requests(
      * will be skipped. All other objects will be interpreted as strings using .toString()
      * @param timeout timeout in seconds
      * */
-    fun post(
+    suspend fun post(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
@@ -342,7 +380,7 @@ open class Requests(
      * will be skipped. All other objects will be interpreted as strings using .toString()
      * @param timeout timeout in seconds
      * */
-    fun put(
+    suspend fun put(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
@@ -369,7 +407,7 @@ open class Requests(
      * will be skipped. All other objects will be interpreted as strings using .toString()
      * @param timeout timeout in seconds
      * */
-    fun delete(
+    suspend fun delete(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
@@ -394,7 +432,7 @@ open class Requests(
      * @param verify false to ignore SSL errors
      * @param timeout timeout in seconds
      * */
-    fun head(
+    suspend fun head(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
@@ -420,7 +458,7 @@ open class Requests(
      * will be skipped. All other objects will be interpreted as strings using .toString()
      * @param timeout timeout in seconds
      * */
-    fun patch(
+    suspend fun patch(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
@@ -447,7 +485,7 @@ open class Requests(
      * will be skipped. All other objects will be interpreted as strings using .toString()
      * @param timeout timeout in seconds
      * */
-    fun options(
+    suspend fun options(
         url: String,
         headers: Map<String, String> = mapOf(),
         referer: String? = null,
