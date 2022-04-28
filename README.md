@@ -20,7 +20,7 @@ maven { url 'https://jitpack.io' }
 ```
 In app/build.gradle dependencies:
 ```groovy
-implementation 'com.github.Blatzar:NiceHttp:0.1.6'
+implementation 'com.github.Blatzar:NiceHttp:0.1.8'
 ```
 
 ### Scraping a document
@@ -65,3 +65,5 @@ val okHttpClient = OkHttpClient.Builder()
 val cacheClient = Requests(okHttpClient)
 cacheClient.get("...", cacheTime = 1, cacheUnit = TimeUnit.HOURS)
 ```
+
+### Async functionality

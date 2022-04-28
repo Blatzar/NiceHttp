@@ -2,8 +2,8 @@ package com.lagradost.nicehttp
 
 import android.annotation.SuppressLint
 import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.json.JsonMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CompletionHandler
@@ -236,7 +236,6 @@ class ContinuationCallback(
     private val continuation: CancellableContinuation<Response>
 ) : Callback, CompletionHandler {
 
-
     override fun onResponse(call: Call, response: Response) {
         continuation.resume(response, null)
     }
@@ -265,8 +264,10 @@ open class Requests(
     var defaultHeaders: Map<String, String> = mapOf("user-agent" to DEFAULT_USER_AGENT),
 ) {
     companion object {
-        val mapper: JsonMapper = JsonMapper.builder().addModule(KotlinModule())
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false).build()
+        var mapper: ObjectMapper = jacksonObjectMapper().configure(
+            DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+            false
+        )
 
         suspend inline fun Call.await(): Response {
             return suspendCancellableCoroutine { continuation ->

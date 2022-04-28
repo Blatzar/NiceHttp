@@ -8,8 +8,8 @@ android {
     defaultConfig {
         minSdkVersion 21
         targetSdkVersion 32
-        versionCode 8
-        versionName '0.1.7'
+        versionCode 9
+        versionName '0.1.8'
     }
 
     buildTypes {
@@ -29,7 +29,8 @@ dependencies {
     api 'org.jsoup:jsoup:1.14.3'
 
     // Parsing JSON
-    api "com.fasterxml.jackson.module:jackson-module-kotlin:2.13.2"
+    /** Do not update to 2.13.2 it breaks compatibility with android < 24 !!! */
+    api "com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1"
 
     // Networking
     api "com.squareup.okhttp3:okhttp:5.0.0-alpha.6"
