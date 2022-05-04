@@ -65,5 +65,3 @@ val okHttpClient = OkHttpClient.Builder()
 val cacheClient = Requests(okHttpClient)
 cacheClient.get("...", cacheTime = 1, cacheUnit = TimeUnit.HOURS)
 ```
-
-### Async functionality
