@@ -47,12 +47,6 @@ class Session(
     }
 }
 
-private const val DEFAULT_TIME = 0
-private val DEFAULT_TIME_UNIT = TimeUnit.MINUTES
-private const val DEFAULT_USER_AGENT = "NiceHttp"
-private val DEFAULT_DATA: Map<String, String> = mapOf()
-private val DEFAULT_COOKIES: Map<String, String> = mapOf()
-private val DEFAULT_REFERER: String? = null
 
 fun Headers.getCookies(cookieKey: String): Map<String, String> {
     val cookieList =
@@ -88,6 +82,7 @@ class NiceResponse(
         (okhttpResponse.headers["Content-Length"]
             ?: okhttpResponse.headers["content-length"])?.toLongOrNull()
     }
+
     val isSuccessful = okhttpResponse.isSuccessful
 
     /** As parsed by Jsoup.parse(text) */
@@ -98,6 +93,16 @@ class NiceResponse(
         return Requests.mapper.readValue(this.text)
     }
 
+    /** Same as using try { mapper.readValue<T>() } */
+    inline fun <reified T : Any> parsedSafe(): T? {
+        return try {
+            Requests.mapper.readValue(this.text)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     /** Only prints the return body */
     override fun toString(): String {
         return text
@@ -106,9 +111,10 @@ class NiceResponse(
 
 val mustHaveBody = listOf("POST", "PUT")
 val cantHaveBody = listOf("GET", "HEAD")
-private fun getData(data: Any?, method: String): RequestBody? {
+fun getData(data: Any?, method: String): RequestBody? {
     // Can't have a body (errors). Not possible with the normal commands, but is with custom()
     if (cantHaveBody.contains(method.uppercase())) return null
+    if (data is RequestBody) return data
     val body = when (data) {
         null -> null
         is Map<*, *> -> {
@@ -128,8 +134,9 @@ private fun getData(data: Any?, method: String): RequestBody? {
                 builder.build()
             }
         }
-        else ->
-            data.toString().toRequestBody("text/plain;charset=UTF-8".toMediaTypeOrNull())
+        is String -> data.toRequestBody("text/plain;charset=UTF-8".toMediaTypeOrNull())
+        else -> Requests.mapper.writeValueAsString(data)
+            .toRequestBody("application/json;charset=utf-8".toMediaTypeOrNull())
     }
     // Post must have a body!
     return body ?: if (mustHaveBody.contains(method.uppercase()))
@@ -166,16 +173,15 @@ private fun getCache(cacheTime: Int, cacheUnit: TimeUnit): CacheControl {
 /**
  * Referer > Set headers > Set getCookies > Default headers > Default Cookies
  */
-private fun getHeaders(
+fun getHeaders(
     headers: Map<String, String>,
     referer: String?,
     cookie: Map<String, String>
 ): Headers {
-    val refererMap = (referer ?: DEFAULT_REFERER)?.let { mapOf("referer" to it) } ?: mapOf()
-    val cookieHeaders = (DEFAULT_COOKIES + cookie)
+    val refererMap = referer?.let { mapOf("referer" to it) } ?: mapOf()
     val cookieMap =
-        if (cookieHeaders.isNotEmpty()) mapOf(
-            "Cookie" to cookieHeaders.entries.joinToString(" ") {
+        if (cookie.isNotEmpty()) mapOf(
+            "Cookie" to cookie.entries.joinToString(" ") {
                 "${it.key}=${it.value};"
             }) else mapOf()
     val tempHeaders = (headers + cookieMap + refererMap)
@@ -189,13 +195,16 @@ fun requestCreator(
     referer: String? = null,
     params: Map<String, String> = emptyMap(),
     cookies: Map<String, String> = emptyMap(),
-    data: Any? = DEFAULT_DATA,
-    cacheTime: Int = DEFAULT_TIME,
-    cacheUnit: TimeUnit = DEFAULT_TIME_UNIT
+    data: Any? = null,
+    cacheTime: Int? = null,
+    cacheUnit: TimeUnit? = null
 ): Request {
     return Request.Builder()
         .url(addParamsToUrl(url, params))
-        .cacheControl(getCache(cacheTime, cacheUnit))
+        .apply {
+            if (cacheTime != null && cacheUnit != null)
+                this.cacheControl(getCache(cacheTime, cacheUnit))
+        }
         .headers(getHeaders(headers, referer, cookies))
         .method(method, getData(data, method))
         .build()
@@ -261,7 +270,12 @@ class ContinuationCallback(
  * */
 open class Requests(
     var baseClient: OkHttpClient = OkHttpClient(),
-    var defaultHeaders: Map<String, String> = mapOf("user-agent" to DEFAULT_USER_AGENT),
+    var defaultTime: Int = 0,
+    var defaultTimeUnit: TimeUnit = TimeUnit.MINUTES,
+    var defaultData: Map<String, String> = mapOf(),
+    var defaultCookies: Map<String, String> = mapOf(),
+    var defaultReferer: String? = null,
+    var defaultHeaders: Map<String, String> = mapOf("user-agent" to "NiceHttp"),
 ) {
     companion object {
         var mapper: ObjectMapper = jacksonObjectMapper().configure(
@@ -283,7 +297,9 @@ open class Requests(
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
      * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * will be skipped. Strings will be interpreted as strings,
+     * objects will be sterilized with jackson mapper and sent as json,
+     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun custom(
@@ -293,10 +309,10 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = emptyMap(),
         cookies: Map<String, String> = emptyMap(),
-        data: Any? = DEFAULT_DATA,
+        data: Any? = defaultData,
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true
@@ -316,8 +332,8 @@ open class Requests(
         if (interceptor != null) client.addInterceptor(interceptor)
         val request =
             requestCreator(
-                method, url, defaultHeaders + headers, referer, params,
-                cookies, data, cacheTime, cacheUnit
+                method, url, defaultHeaders + headers, referer ?: defaultReferer, params,
+                defaultCookies + cookies, data, cacheTime, cacheUnit
             )
         val response = client.build().newCall(request).await()
         return NiceResponse(response)
@@ -335,8 +351,8 @@ open class Requests(
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true
@@ -351,7 +367,9 @@ open class Requests(
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
      * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * will be skipped. Strings will be interpreted as strings,
+     * objects will be sterilized with jackson mapper and sent as json,
+     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun post(
@@ -360,10 +378,10 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = DEFAULT_DATA,
+        data: Any? = defaultData,
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true
@@ -378,7 +396,9 @@ open class Requests(
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
      * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * will be skipped. Strings will be interpreted as strings,
+     * objects will be sterilized with jackson mapper and sent as json,
+     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun put(
@@ -387,10 +407,10 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = DEFAULT_DATA,
+        data: Any? = defaultData,
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true
@@ -405,7 +425,9 @@ open class Requests(
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
      * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * will be skipped. Strings will be interpreted as strings,
+     * objects will be sterilized with jackson mapper and sent as json,
+     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun delete(
@@ -414,10 +436,10 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = DEFAULT_DATA,
+        data: Any? = defaultData,
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true
@@ -440,8 +462,8 @@ open class Requests(
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true
@@ -456,7 +478,9 @@ open class Requests(
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
      * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * will be skipped. Strings will be interpreted as strings,
+     * objects will be sterilized with jackson mapper and sent as json,
+     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun patch(
@@ -465,10 +489,10 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = DEFAULT_DATA,
+        data: Any? = defaultData,
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true
@@ -483,7 +507,9 @@ open class Requests(
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
      * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. All other objects will be interpreted as strings using .toString()
+     * will be skipped. Strings will be interpreted as strings,
+     * objects will be sterilized with jackson mapper and sent as json,
+     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun options(
@@ -492,10 +518,10 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = DEFAULT_DATA,
+        data: Any? = defaultData,
         allowRedirects: Boolean = true,
-        cacheTime: Int = DEFAULT_TIME,
-        cacheUnit: TimeUnit = DEFAULT_TIME_UNIT,
+        cacheTime: Int = defaultTime,
+        cacheUnit: TimeUnit = defaultTimeUnit,
         timeout: Long = 0L,
         interceptor: Interceptor? = null,
         verify: Boolean = true

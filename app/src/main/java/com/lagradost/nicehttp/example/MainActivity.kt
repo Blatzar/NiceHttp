@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
             println(json.description)
 
             // Example for Async-ed Requests
-            (0..5).toList().asyncEach {
+            (0..5).toList().asyncMap {
                 println("Entered Async")
                 println("Response ::: " + requests.get("https://github.com/").code)
                 println("Exit Async")
