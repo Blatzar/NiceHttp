@@ -11,7 +11,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.*
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
@@ -109,35 +112,77 @@ class NiceResponse(
     }
 }
 
+object RequestBodyTypes {
+    const val JSON = "application/json;charset=utf-8"
+    const val TEXT = "text/plain;charset=utf-8"
+}
+
 val mustHaveBody = listOf("POST", "PUT")
 val cantHaveBody = listOf("GET", "HEAD")
-fun getData(data: Any?, method: String): RequestBody? {
+
+
+/**
+ * Prioritizes:
+ * 0. requestBody
+ * 1. data (Map)
+ * 2. json (Any or String)
+ * 3. files (List which can include files or normal data, but encoded differently)
+ *
+ * @return null if method cannot have a body or if the parameters did not give a body.
+ * */
+fun getData(
+    method: String,
+    data: Map<String, String>?,
+    files: List<NiceFile>?,
+    json: Any?,
+    requestBody: RequestBody?
+): RequestBody? {
     // Can't have a body (errors). Not possible with the normal commands, but is with custom()
     if (cantHaveBody.contains(method.uppercase())) return null
-    if (data is RequestBody) return data
-    val body = when (data) {
-        null -> null
-        is Map<*, *> -> {
-            val formattedData = data.mapNotNull {
-                val key = it.key as? String ?: return@mapNotNull null
-                val value = it.value as? String ?: return@mapNotNull null
-                key to value
-            }
-            // Multipart body must have at least one part.
-            if (formattedData.isEmpty())
-                null
-            else {
-                val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
-                formattedData.forEach {
-                    builder.addFormDataPart(it.first, it.second)
-                }
-                builder.build()
-            }
+    if (requestBody != null) return requestBody
+
+
+    val body = if (data != null) {
+
+        val builder = FormBody.Builder()
+        data.forEach {
+            builder.add(it.key, it.value)
         }
-        is String -> data.toRequestBody("text/plain;charset=UTF-8".toMediaTypeOrNull())
-        else -> Requests.mapper.writeValueAsString(data)
-            .toRequestBody("application/json;charset=utf-8".toMediaTypeOrNull())
+        builder.build()
+
+    } else if (json != null) {
+
+        val jsonString = when (json) {
+            is JSONObject -> json.toString()
+            is JSONArray -> json.toString()
+            is String -> json
+            else -> Requests.mapper.writeValueAsString(json)
+        }
+
+        val type = if (json is String) RequestBodyTypes.TEXT else RequestBodyTypes.JSON
+
+        jsonString.toRequestBody(type.toMediaTypeOrNull())
+
+    } else if (!files.isNullOrEmpty()) {
+
+        val builder = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+        files.forEach {
+            if (it.file != null)
+                builder.addFormDataPart(
+                    it.name,
+                    it.fileName,
+                    it.file.asRequestBody(it.fileType?.toMediaTypeOrNull())
+                )
+            else
+                builder.addFormDataPart(it.name, it.fileName)
+        }
+        builder.build()
+
+    } else {
+        null
     }
+
     // Post must have a body!
     return body ?: if (mustHaveBody.contains(method.uppercase()))
         FormBody.Builder().build() else null
@@ -195,7 +240,10 @@ fun requestCreator(
     referer: String? = null,
     params: Map<String, String> = emptyMap(),
     cookies: Map<String, String> = emptyMap(),
-    data: Any? = null,
+    data: Map<String, String>? = null,
+    files: List<NiceFile>? = null,
+    json: Any? = null,
+    requestBody: RequestBody? = null,
     cacheTime: Int? = null,
     cacheUnit: TimeUnit? = null
 ): Request {
@@ -206,7 +254,7 @@ fun requestCreator(
                 this.cacheControl(getCache(cacheTime, cacheUnit))
         }
         .headers(getHeaders(headers, referer, cookies))
-        .method(method, getData(data, method))
+        .method(method, getData(method, data, files, json, requestBody))
         .build()
 }
 
@@ -270,12 +318,13 @@ class ContinuationCallback(
  * */
 open class Requests(
     var baseClient: OkHttpClient = OkHttpClient(),
-    var defaultTime: Int = 0,
-    var defaultTimeUnit: TimeUnit = TimeUnit.MINUTES,
+    var defaultHeaders: Map<String, String> = mapOf("user-agent" to "NiceHttp"),
+    var defaultReferer: String? = null,
     var defaultData: Map<String, String> = mapOf(),
     var defaultCookies: Map<String, String> = mapOf(),
-    var defaultReferer: String? = null,
-    var defaultHeaders: Map<String, String> = mapOf("user-agent" to "NiceHttp"),
+    var defaultCacheTime: Int = 0,
+    var defaultCacheTimeUnit: TimeUnit = TimeUnit.MINUTES,
+    var defaultTimeOut: Long = 0L,
 ) {
     companion object {
         var mapper: ObjectMapper = jacksonObjectMapper().configure(
@@ -296,10 +345,6 @@ open class Requests(
     /**
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
-     * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. Strings will be interpreted as strings,
-     * objects will be sterilized with jackson mapper and sent as json,
-     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun custom(
@@ -309,11 +354,14 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = emptyMap(),
         cookies: Map<String, String> = emptyMap(),
-        data: Any? = defaultData,
+        data: Map<String, String>? = defaultData,
+        files: List<NiceFile>? = null,
+        json: Any? = null,
+        requestBody: RequestBody? = null,
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
@@ -333,7 +381,7 @@ open class Requests(
         val request =
             requestCreator(
                 method, url, defaultHeaders + headers, referer ?: defaultReferer, params,
-                defaultCookies + cookies, data, cacheTime, cacheUnit
+                defaultCookies + cookies, data, files, json, requestBody, cacheTime, cacheUnit
             )
         val response = client.build().newCall(request).await()
         return NiceResponse(response)
@@ -351,14 +399,14 @@ open class Requests(
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "GET", url, headers, referer, params, cookies, null,
+            "GET", url, headers, referer, params, cookies, null, null, null, null,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
@@ -366,10 +414,6 @@ open class Requests(
     /**
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
-     * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. Strings will be interpreted as strings,
-     * objects will be sterilized with jackson mapper and sent as json,
-     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun post(
@@ -378,16 +422,19 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = defaultData,
+        data: Map<String, String>? = defaultData,
+        files: List<NiceFile>? = null,
+        json: Any? = null,
+        requestBody: RequestBody? = null,
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "POST", url, headers, referer, params, cookies, data,
+            "POST", url, headers, referer, params, cookies, data, files, json, requestBody,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
@@ -395,10 +442,6 @@ open class Requests(
     /**
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
-     * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. Strings will be interpreted as strings,
-     * objects will be sterilized with jackson mapper and sent as json,
-     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun put(
@@ -407,16 +450,19 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = defaultData,
+        data: Map<String, String>? = defaultData,
+        files: List<NiceFile>? = null,
+        json: Any? = null,
+        requestBody: RequestBody? = null,
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "PUT", url, headers, referer, params, cookies, data,
+            "PUT", url, headers, referer, params, cookies, data, files, json, requestBody,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
@@ -424,10 +470,6 @@ open class Requests(
     /**
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
-     * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. Strings will be interpreted as strings,
-     * objects will be sterilized with jackson mapper and sent as json,
-     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun delete(
@@ -436,16 +478,19 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = defaultData,
+        data: Map<String, String>? = defaultData,
+        files: List<NiceFile>? = null,
+        json: Any? = null,
+        requestBody: RequestBody? = null,
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "DELETE", url, headers, referer, params, cookies, data,
+            "DELETE", url, headers, referer, params, cookies, data, files, json, requestBody,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
@@ -462,14 +507,14 @@ open class Requests(
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "HEAD", url, headers, referer, params, cookies, null,
+            "HEAD", url, headers, referer, params, cookies, null, null, null, null,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
@@ -477,10 +522,6 @@ open class Requests(
     /**
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
-     * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. Strings will be interpreted as strings,
-     * objects will be sterilized with jackson mapper and sent as json,
-     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun patch(
@@ -489,16 +530,19 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = defaultData,
+        data: Map<String, String>? = defaultData,
+        files: List<NiceFile>? = null,
+        json: Any? = null,
+        requestBody: RequestBody? = null,
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "PATCH", url, headers, referer, params, cookies, data,
+            "PATCH", url, headers, referer, params, cookies, data, files, json, requestBody,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
@@ -506,10 +550,6 @@ open class Requests(
     /**
      * @param cacheUnit defaults to minutes
      * @param verify false to ignore SSL errors
-     * @param data Map<String?, String?> or String, all keys or values which is null
-     * will be skipped. Strings will be interpreted as strings,
-     * objects will be sterilized with jackson mapper and sent as json,
-     * RequestBody will be used as is.
      * @param timeout timeout in seconds
      * */
     suspend fun options(
@@ -518,16 +558,19 @@ open class Requests(
         referer: String? = null,
         params: Map<String, String> = mapOf(),
         cookies: Map<String, String> = mapOf(),
-        data: Any? = defaultData,
+        data: Map<String, String>? = defaultData,
+        files: List<NiceFile>? = null,
+        json: Any? = null,
+        requestBody: RequestBody? = null,
         allowRedirects: Boolean = true,
-        cacheTime: Int = defaultTime,
-        cacheUnit: TimeUnit = defaultTimeUnit,
-        timeout: Long = 0L,
+        cacheTime: Int = defaultCacheTime,
+        cacheUnit: TimeUnit = defaultCacheTimeUnit,
+        timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
         verify: Boolean = true
     ): NiceResponse {
         return custom(
-            "OPTIONS", url, headers, referer, params, cookies, data,
+            "OPTIONS", url, headers, referer, params, cookies, data, files, json, requestBody,
             allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
         )
     }
