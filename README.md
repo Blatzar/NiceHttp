@@ -15,10 +15,13 @@ Featuring:
 ### Setup
 
 In build.gradle repositories:
+
 ```groovy
 maven { url 'https://jitpack.io' }
 ```
+
 In app/build.gradle dependencies:
+
 ```groovy
 implementation 'com.github.Blatzar:NiceHttp:+'
 ```
@@ -42,14 +45,40 @@ data class GithubJson(
     val private: Boolean
 )
 
-val requests = Requests()
+// Implement your own requests parser here with your library of choice, this is with jackson :)
+
+val parser = object : ResponseParser {
+    val mapper: ObjectMapper = jacksonObjectMapper().configure(
+        DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+        false
+    )
+
+    override fun <T : Any> parse(text: String, kClass: KClass<T>): T {
+        return mapper.readValue(text, kClass.java)
+    }
+
+    override fun <T : Any> parseSafe(text: String, kClass: KClass<T>): T? {
+        return try {
+            mapper.readValue(text, kClass.java)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override fun writeValueAsString(obj: Any): String {
+        return mapper.writeValueAsString(obj)
+    }
+}
+
+val requests = Requests(responseParser = parser)
+
 val json = requests.get("https://api.github.com/repos/blatzar/nicehttp").parsed<GithubJson>()
 println(json.description)
 ```
 
 ### Using cache
 
-(This should work, but I have had issues getting cache hits when testing)
+Not working properly currently! No idea why :(
 
 ```kotlin
 // Just pass in a 

@@ -1,236 +1,41 @@
 package com.lagradost.nicehttp
 
-import android.annotation.SuppressLint
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import kotlinx.coroutines.CancellableContinuation
-import kotlinx.coroutines.CompletionHandler
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.*
-import okhttp3.Headers.Companion.toHeaders
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import java.io.IOException
-import java.net.URI
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
-import kotlin.coroutines.resumeWithException
+import kotlin.reflect.KClass
 
-class Session(
-    client: OkHttpClient
-) : Requests() {
-    init {
-        this.baseClient = client
-            .newBuilder()
-            .cookieJar(CustomCookieJar())
-            .build()
-    }
+/**
+ * Used to implement your own json parser of choice :)
+ * */
+interface ResponseParser {
+    /**
+     * Parse Json based on response text and the type T from parsed<T>()
+     * This function can throw errors.
+     * */
+    fun <T : Any> parse(text: String, kClass: KClass<T>): T
 
-    inner class CustomCookieJar : CookieJar {
-        private var cookies = mapOf<String, Cookie>()
+    /**
+     * Same as parse() but when overridden use try catch and return null on failure.
+     * */
+    fun <T : Any> parseSafe(text: String, kClass: KClass<T>): T?
 
-        override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            return this.cookies.values.toList()
-        }
-
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            this.cookies += cookies.map { it.name to it }
-        }
-    }
+    /**
+     * Used internally to sterilize objects to json in the data parameter.
+     * requests.get(json = obj)
+     * */
+    fun writeValueAsString(obj: Any): String
 }
 
-
-fun Headers.getCookies(cookieKey: String): Map<String, String> {
-    val cookieList =
-        this.filter { it.first.equals(cookieKey, ignoreCase = true) }
-            .getOrNull(0)?.second?.split(";")
-    return cookieList?.associate {
-        val split = it.split("=")
-        (split.getOrNull(0)?.trim() ?: "") to (split.getOrNull(1)?.trim() ?: "")
-    }?.filter { it.key.isNotBlank() && it.value.isNotBlank() } ?: mapOf()
-}
-
-private val Response.cookies: Map<String, String>
-    get() = this.headers.getCookies("set-cookie")
-
-private val Request.cookies: Map<String, String>
-    get() = this.headers.getCookies("Cookie")
-
-class NiceResponse(
-    val okhttpResponse: Response
-) {
-    /** Lazy, initialized on use. Returns empty string on null. */
-    val text by lazy { okhttpResponse.body?.string() ?: "" }
-    val url by lazy { okhttpResponse.request.url.toString() }
-    val cookies by lazy { okhttpResponse.cookies }
-    val body by lazy { okhttpResponse.body }
-
-    /** Return code */
-    val code = okhttpResponse.code
-    val headers = okhttpResponse.headers
-
-    /** Size, as reported by Content-Length */
-    val size by lazy {
-        (okhttpResponse.headers["Content-Length"]
-            ?: okhttpResponse.headers["content-length"])?.toLongOrNull()
-    }
-
-    val isSuccessful = okhttpResponse.isSuccessful
-
-    /** As parsed by Jsoup.parse(text) */
-    val document: Document by lazy { Jsoup.parse(text) }
-
-    /** Same as using mapper.readValue<T>() */
-    inline fun <reified T : Any> parsed(): T {
-        return Requests.mapper.readValue(this.text)
-    }
-
-    /** Same as using try { mapper.readValue<T>() } */
-    inline fun <reified T : Any> parsedSafe(): T? {
-        return try {
-            Requests.mapper.readValue(this.text)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    /** Only prints the return body */
-    override fun toString(): String {
-        return text
-    }
-}
+/**
+ * Used in requests as json = JsonAsString(str)
+ * To get a request with application/json even if it is a string
+ * */
+data class JsonAsString(val string: String)
 
 object RequestBodyTypes {
     const val JSON = "application/json;charset=utf-8"
     const val TEXT = "text/plain;charset=utf-8"
-}
-
-val mustHaveBody = listOf("POST", "PUT")
-val cantHaveBody = listOf("GET", "HEAD")
-
-
-/**
- * Prioritizes:
- * 0. requestBody
- * 1. data (Map)
- * 2. json (Any or String)
- * 3. files (List which can include files or normal data, but encoded differently)
- *
- * @return null if method cannot have a body or if the parameters did not give a body.
- * */
-fun getData(
-    method: String,
-    data: Map<String, String>?,
-    files: List<NiceFile>?,
-    json: Any?,
-    requestBody: RequestBody?
-): RequestBody? {
-    // Can't have a body (errors). Not possible with the normal commands, but is with custom()
-    if (cantHaveBody.contains(method.uppercase())) return null
-    if (requestBody != null) return requestBody
-
-
-    val body = if (data != null) {
-
-        val builder = FormBody.Builder()
-        data.forEach {
-            builder.add(it.key, it.value)
-        }
-        builder.build()
-
-    } else if (json != null) {
-
-        val jsonString = when (json) {
-            is JSONObject -> json.toString()
-            is JSONArray -> json.toString()
-            is String -> json
-            else -> Requests.mapper.writeValueAsString(json)
-        }
-
-        val type = if (json is String) RequestBodyTypes.TEXT else RequestBodyTypes.JSON
-
-        jsonString.toRequestBody(type.toMediaTypeOrNull())
-
-    } else if (!files.isNullOrEmpty()) {
-
-        val builder = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-        files.forEach {
-            if (it.file != null)
-                builder.addFormDataPart(
-                    it.name,
-                    it.fileName,
-                    it.file.asRequestBody(it.fileType?.toMediaTypeOrNull())
-                )
-            else
-                builder.addFormDataPart(it.name, it.fileName)
-        }
-        builder.build()
-
-    } else {
-        null
-    }
-
-    // Post must have a body!
-    return body ?: if (mustHaveBody.contains(method.uppercase()))
-        FormBody.Builder().build() else null
-}
-
-// https://github.com, id=test -> https://github.com?id=test
-private fun appendUri(uri: String, appendQuery: String): String {
-    val oldUri = URI(uri)
-    return URI(
-        oldUri.scheme,
-        oldUri.authority,
-        oldUri.path,
-        if (oldUri.query == null) appendQuery else oldUri.query + "&" + appendQuery,
-        oldUri.fragment
-    ).toString()
-}
-
-// Can probably be done recursively
-private fun addParamsToUrl(url: String, params: Map<String, String?>): String {
-    var appendedUrl = url
-    params.forEach {
-        it.value?.let { value ->
-            appendedUrl = appendUri(appendedUrl, "${it.key}=${value}")
-        }
-    }
-    return appendedUrl
-}
-
-private fun getCache(cacheTime: Int, cacheUnit: TimeUnit): CacheControl {
-    return CacheControl.Builder().maxStale(cacheTime, cacheUnit).build()
-}
-
-/**
- * Referer > Set headers > Set getCookies > Default headers > Default Cookies
- */
-fun getHeaders(
-    headers: Map<String, String>,
-    referer: String?,
-    cookie: Map<String, String>
-): Headers {
-    val refererMap = referer?.let { mapOf("referer" to it) } ?: mapOf()
-    val cookieMap =
-        if (cookie.isNotEmpty()) mapOf(
-            "Cookie" to cookie.entries.joinToString(" ") {
-                "${it.key}=${it.value};"
-            }) else mapOf()
-    val tempHeaders = (headers + cookieMap + refererMap)
-    return tempHeaders.toHeaders()
 }
 
 fun requestCreator(
@@ -245,7 +50,8 @@ fun requestCreator(
     json: Any? = null,
     requestBody: RequestBody? = null,
     cacheTime: Int? = null,
-    cacheUnit: TimeUnit? = null
+    cacheUnit: TimeUnit? = null,
+    responseParser: ResponseParser? = null
 ): Request {
     return Request.Builder()
         .url(addParamsToUrl(url, params))
@@ -254,67 +60,17 @@ fun requestCreator(
                 this.cacheControl(getCache(cacheTime, cacheUnit))
         }
         .headers(getHeaders(headers, referer, cookies))
-        .method(method, getData(method, data, files, json, requestBody))
+        .method(method, getData(method, data, files, json, requestBody, responseParser))
         .build()
-}
-
-class CacheInterceptor : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        return chain.proceed(chain.request()).newBuilder()
-            .removeHeader("Cache-Control") // Remove site cache
-            .removeHeader("Pragma") // Remove site cache
-            .addHeader("Cache-Control", CacheControl.FORCE_CACHE.toString())
-            .build()
-    }
-}
-
-// https://stackoverflow.com/a/59322754
-fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
-    val naiveTrustManager = @SuppressLint("CustomX509TrustManager")
-    object : X509TrustManager {
-        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        override fun checkClientTrusted(certs: Array<X509Certificate>, authType: String) = Unit
-        override fun checkServerTrusted(certs: Array<X509Certificate>, authType: String) = Unit
-    }
-
-    val insecureSocketFactory = SSLContext.getInstance("TLSv1.2").apply {
-        val trustAllCerts = arrayOf<TrustManager>(naiveTrustManager)
-        init(null, trustAllCerts, SecureRandom())
-    }.socketFactory
-
-    sslSocketFactory(insecureSocketFactory, naiveTrustManager)
-    hostnameVerifier { _, _ -> true }
-    return this
-}
-
-//Provides async-able Calls
-class ContinuationCallback(
-    private val call: Call,
-    private val continuation: CancellableContinuation<Response>
-) : Callback, CompletionHandler {
-
-    override fun onResponse(call: Call, response: Response) {
-        continuation.resume(response, null)
-    }
-
-    override fun onFailure(call: Call, e: IOException) {
-        if (!call.isCanceled()) {
-            continuation.resumeWithException(e)
-        }
-    }
-
-    override fun invoke(cause: Throwable?) {
-        try {
-            call.cancel()
-        } catch (_: Throwable) {
-        }
-    }
 }
 
 /**
  * @param baseClient base okhttp client used for all requests. Use this to get cache.
  * @param defaultHeaders base headers present in all requests, will get overwritten by custom headers.
  * Includes the NiceHttp user agent by default.
+ * @param defaultTimeOut default timeout in seconds.
+ * @param responseParser used for parsing, eg response.parse<T>().
+ * Will throw Exception if parse() is used and parser is not implemented!
  * */
 open class Requests(
     var baseClient: OkHttpClient = OkHttpClient(),
@@ -325,13 +81,9 @@ open class Requests(
     var defaultCacheTime: Int = 0,
     var defaultCacheTimeUnit: TimeUnit = TimeUnit.MINUTES,
     var defaultTimeOut: Long = 0L,
+    var responseParser: ResponseParser? = null,
 ) {
     companion object {
-        var mapper: ObjectMapper = jacksonObjectMapper().configure(
-            DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
-            false
-        )
-
         suspend inline fun Call.await(): Response {
             return suspendCancellableCoroutine { continuation ->
                 val callback = ContinuationCallback(this, continuation)
@@ -363,7 +115,8 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         val client = baseClient
             .newBuilder()
@@ -373,18 +126,29 @@ open class Requests(
             .callTimeout(timeout, TimeUnit.SECONDS)
         if (timeout > 0)
             client
-                .connectTimeout(timeout, TimeUnit.SECONDS)
-                .readTimeout(timeout, TimeUnit.SECONDS)
+                .callTimeout(timeout, TimeUnit.SECONDS)
         if (!verify) client.ignoreAllSSLErrors()
 
         if (interceptor != null) client.addInterceptor(interceptor)
         val request =
             requestCreator(
-                method, url, defaultHeaders + headers, referer ?: defaultReferer, params,
-                defaultCookies + cookies, data, files, json, requestBody, cacheTime, cacheUnit
+                method,
+                url,
+                defaultHeaders + headers,
+                referer ?: defaultReferer,
+                params,
+                defaultCookies + cookies,
+                data,
+                files,
+                json,
+                requestBody,
+                cacheTime,
+                cacheUnit,
+                responseParser
             )
-        val response = client.build().newCall(request).await()
-        return NiceResponse(response)
+        val response =
+            client.build().newCall(request).await()
+        return NiceResponse(response, responseParser)
     }
 
     /**
@@ -403,11 +167,12 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         return custom(
             "GET", url, headers, referer, params, cookies, null, null, null, null,
-            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify, responseParser
         )
     }
 
@@ -431,11 +196,12 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         return custom(
             "POST", url, headers, referer, params, cookies, data, files, json, requestBody,
-            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify, responseParser
         )
     }
 
@@ -459,11 +225,12 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         return custom(
             "PUT", url, headers, referer, params, cookies, data, files, json, requestBody,
-            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify, responseParser
         )
     }
 
@@ -487,11 +254,12 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         return custom(
             "DELETE", url, headers, referer, params, cookies, data, files, json, requestBody,
-            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify, responseParser
         )
     }
 
@@ -511,11 +279,12 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         return custom(
             "HEAD", url, headers, referer, params, cookies, null, null, null, null,
-            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify, responseParser
         )
     }
 
@@ -539,11 +308,12 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         return custom(
             "PATCH", url, headers, referer, params, cookies, data, files, json, requestBody,
-            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify, responseParser
         )
     }
 
@@ -567,12 +337,12 @@ open class Requests(
         cacheUnit: TimeUnit = defaultCacheTimeUnit,
         timeout: Long = defaultTimeOut,
         interceptor: Interceptor? = null,
-        verify: Boolean = true
+        verify: Boolean = true,
+        responseParser: ResponseParser? = this.responseParser
     ): NiceResponse {
         return custom(
             "OPTIONS", url, headers, referer, params, cookies, data, files, json, requestBody,
-            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify
+            allowRedirects, cacheTime, cacheUnit, timeout, interceptor, verify, responseParser
         )
     }
-
 }
