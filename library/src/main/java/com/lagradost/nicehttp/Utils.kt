@@ -12,6 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.URI
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
@@ -157,11 +158,13 @@ class ContinuationCallback(
     override fun onFailure(call: Call, e: IOException) {
         // Cannot throw exception on SocketException since that can lead to un-catchable crashes
         // when you exit an activity as a request
-        Log.d(TAG, "Exception in NiceHttp: ${e.message}")
-        if (call.isCanceled() && e !is java.net.SocketException) {
+        Log.d(TAG, "Exception in NiceHttp: ${e.javaClass.name} ${e.message}")
+        if (call.isCanceled()) {
             // Must be able to throw errors, for example timeouts
-            e.printStackTrace()
-            throw e
+            if (e is InterruptedIOException)
+                throw e
+            else
+                e.printStackTrace()
         } else {
             continuation.resumeWithException(e)
         }
