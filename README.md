@@ -2,7 +2,7 @@
 
 [![](https://jitpack.io/v/Blatzar/NiceHttp.svg)](https://jitpack.io/#Blatzar/NiceHttp)
 
-A small and simple OkHttp wrapper to ease scraping. Mostly for personal use.
+A small and simple Android OkHttp wrapper to ease scraping. Mostly for personal use.
 
 Featuring:
 

@@ -24,16 +24,16 @@ repositories {
 
 dependencies {
     // Parsing HTML
-    api 'org.jsoup:jsoup:1.14.3'
+    api 'org.jsoup:jsoup:1.15.1'
 
     // Parsing JSON
     /** Do not update to 2.13.2 it breaks compatibility with android < 24 !!! */
 //    api "com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1"
 
     // Networking
-    api "com.squareup.okhttp3:okhttp:5.0.0-alpha.7"
-    api "com.squareup.okhttp3:okhttp-dnsoverhttps:5.0.0-alpha.7"
+    api "com.squareup.okhttp3:okhttp:5.0.0-alpha.9"
+    api "com.squareup.okhttp3:okhttp-dnsoverhttps:5.0.0-alpha.9"
 
     // Async
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.1-native-mt'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.2'
 }

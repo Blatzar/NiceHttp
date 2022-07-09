@@ -1,6 +1,7 @@
 package com.lagradost.nicehttp
 
 import android.annotation.SuppressLint
+import android.util.Log
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CompletionHandler
 import okhttp3.*
@@ -22,6 +23,8 @@ import kotlin.coroutines.resumeWithException
 
 private val mustHaveBody = listOf("POST", "PUT")
 private val cantHaveBody = listOf("GET", "HEAD")
+
+const val TAG = "NiceHttp"
 
 /**
  * Prioritizes:
@@ -59,7 +62,7 @@ fun getData(
             is JSONArray -> json.toString()
             is String -> json
             is JsonAsString -> json.string
-            responseParser != null -> responseParser!!.writeValueAsString(json)
+            (responseParser != null) -> responseParser!!.writeValueAsString(json)
             else -> json.toString()
         }
 
@@ -152,11 +155,16 @@ class ContinuationCallback(
     }
 
     override fun onFailure(call: Call, e: IOException) {
-        if (!call.isCanceled()) {
-            continuation.resumeWithException(e)
-        } else
+        // Cannot throw exception on SocketException since that can lead to un-catchable crashes
+        // when you exit an activity as a request
+        Log.d(TAG, "Exception in NiceHttp: ${e.message}")
+        if (call.isCanceled() && e !is java.net.SocketException) {
             // Must be able to throw errors, for example timeouts
+            e.printStackTrace()
             throw e
+        } else {
+            continuation.resumeWithException(e)
+        }
     }
 
     override fun invoke(cause: Throwable?) {
