@@ -29,10 +29,12 @@ implementation 'com.github.Blatzar:NiceHttp:+'
 ### Scraping a document
 
 ```kotlin
-val requests = Requests()
-val doc = requests.get("https://github.com/Blatzar/NiceHttp").document
-// Using CSS selectors to get the about text
-println(doc.select("p.f4.my-3").text())
+lifecycleScope.launch {
+    val requests = Requests()
+    val doc = requests.get("https://github.com/Blatzar/NiceHttp").document
+    // Using CSS selectors to get the about text
+    println(doc.select("p.f4.my-3").text())
+}
 ```
 
 ### Parsing json
@@ -71,9 +73,10 @@ val parser = object : ResponseParser {
 }
 
 val requests = Requests(responseParser = parser)
-
-val json = requests.get("https://api.github.com/repos/blatzar/nicehttp").parsed<GithubJson>()
-println(json.description)
+lifecycleScope.launch {
+    val json = requests.get("https://api.github.com/repos/blatzar/nicehttp").parsed<GithubJson>()
+    println(json.description)
+}
 ```
 
 ### Using cache
@@ -92,5 +95,7 @@ val okHttpClient = OkHttpClient.Builder()
     .build()
 
 val cacheClient = Requests(okHttpClient)
-cacheClient.get("...", cacheTime = 1, cacheUnit = TimeUnit.HOURS)
+lifecycleScope.launch {
+    cacheClient.get("...", cacheTime = 1, cacheUnit = TimeUnit.HOURS)
+}
 ```

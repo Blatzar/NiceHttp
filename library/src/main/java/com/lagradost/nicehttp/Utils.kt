@@ -162,7 +162,7 @@ class ContinuationCallback(
         if (call.isCanceled()) {
             // Must be able to throw errors, for example timeouts
             if (e is InterruptedIOException)
-                throw e
+                continuation.cancel(e)
             else
                 e.printStackTrace()
         } else {
