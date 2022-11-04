@@ -35,5 +35,5 @@ dependencies {
     api "com.squareup.okhttp3:okhttp-dnsoverhttps:5.0.0-alpha.9"
 
     // Async
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.2'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
 }

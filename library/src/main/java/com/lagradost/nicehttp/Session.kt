@@ -15,8 +15,8 @@ class Session(
             .build()
     }
 
-    inner class CustomCookieJar : CookieJar {
-        private var cookies = mapOf<String, Cookie>()
+    open inner class CustomCookieJar : CookieJar {
+        var cookies = mapOf<String, Cookie>()
 
         override fun loadForRequest(url: HttpUrl): List<Cookie> {
             return this.cookies.values.toList()

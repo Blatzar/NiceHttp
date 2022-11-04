@@ -123,7 +123,7 @@ fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
         override fun checkServerTrusted(certs: Array<X509Certificate>, authType: String) = Unit
     }
 
-    val insecureSocketFactory = SSLContext.getInstance("TLSv1.2").apply {
+    val insecureSocketFactory = SSLContext.getInstance("SSL").apply {
         val trustAllCerts = arrayOf<TrustManager>(naiveTrustManager)
         init(null, trustAllCerts, SecureRandom())
     }.socketFactory
@@ -158,7 +158,7 @@ class ContinuationCallback(
     override fun onFailure(call: Call, e: IOException) {
         // Cannot throw exception on SocketException since that can lead to un-catchable crashes
         // when you exit an activity as a request
-        Log.d(TAG, "Exception in NiceHttp: ${e.javaClass.name} ${e.message}")
+        println("Exception in NiceHttp: ${e.javaClass.name} ${e.message}")
         if (call.isCanceled()) {
             // Must be able to throw errors, for example timeouts
             if (e is InterruptedIOException)
