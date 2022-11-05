@@ -203,5 +203,7 @@ internal fun addParamsToUrl(url: String, params: Map<String, String?>): String {
 }
 
 internal fun getCache(cacheTime: Int, cacheUnit: TimeUnit): CacheControl {
-    return CacheControl.Builder().maxStale(cacheTime, cacheUnit).build()
+    return CacheControl.Builder()
+        .maxAge(cacheTime, cacheUnit)
+        .build()
 }

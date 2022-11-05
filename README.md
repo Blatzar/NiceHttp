@@ -81,7 +81,7 @@ lifecycleScope.launch {
 
 ### Using cache
 
-Not working properly currently! No idea why :(
+Note: For a request to be cached you need to consume the body! You do this by calling .text or .document
 
 ```kotlin
 // Just pass in a 
@@ -96,6 +96,7 @@ val okHttpClient = OkHttpClient.Builder()
 
 val cacheClient = Requests(okHttpClient)
 lifecycleScope.launch {
+    // Cache time refers to how long the response could have been cached for 
     cacheClient.get("...", cacheTime = 1, cacheUnit = TimeUnit.HOURS)
 }
 ```

@@ -55,12 +55,12 @@ fun requestCreator(
 ): Request {
     return Request.Builder()
         .url(addParamsToUrl(url, params))
+        .headers(getHeaders(headers, referer, cookies))
+        .method(method, getData(method, data, files, json, requestBody, responseParser))
         .apply {
             if (cacheTime != null && cacheUnit != null)
                 this.cacheControl(getCache(cacheTime, cacheUnit))
         }
-        .headers(getHeaders(headers, referer, cookies))
-        .method(method, getData(method, data, files, json, requestBody, responseParser))
         .build()
 }
 
@@ -99,7 +99,7 @@ open class Requests(
      * @param verify false to ignore SSL errors
      * @param timeout timeout in seconds
      * */
-    suspend fun custom(
+    open suspend fun custom(
         method: String,
         url: String,
         headers: Map<String, String> = emptyMap(),
