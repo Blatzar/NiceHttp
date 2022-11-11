@@ -48,11 +48,11 @@ fun getData(
     if (cantHaveBody.contains(method.uppercase())) return null
     if (requestBody != null) return requestBody
 
-    val body = if (data != null) {
+    val body = if (!data.isNullOrEmpty()) {
 
         val builder = FormBody.Builder()
         data.forEach {
-            builder.add(it.key, it.value)
+            builder.addEncoded(it.key, it.value)
         }
         builder.build()
 
