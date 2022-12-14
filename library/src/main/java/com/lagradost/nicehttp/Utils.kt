@@ -136,11 +136,14 @@ fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
 
 fun Headers.getCookies(cookieKey: String): Map<String, String> {
     // Get a list of cookie strings
-    // set-cookie: name=value; name2=value2 -----> [name=value, name2=value2]
+    // set-cookie: name=value;
+    // set-cookie: name2=value2;
+    // ---->
+    // [name=value, name2=value2]
     val cookieList =
         this.filter { it.first.equals(cookieKey, ignoreCase = true) }.map {
-            it.second.split(";")
-        }.flatten()
+            it.second.substringBefore(";")
+        }
 
     // [name=value, name2=value2] -----> mapOf(name to value, name2 to value2)
     return cookieList.associate {
