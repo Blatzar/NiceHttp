@@ -23,6 +23,23 @@ repositories {
     mavenCentral()
 }
 
+publishing {
+    repositories {
+        mavenLocal()
+    }
+    publications {
+        maven(MavenPublication) {
+            groupId 'com.lagradost'
+            artifactId 'nicehttp'
+            version '1.0.0'
+
+            afterEvaluate {
+                from components.release
+            }
+        }
+    }
+}
+
 dependencies {
     // Parsing HTML
     api 'org.jsoup:jsoup:1.15.1'
