@@ -1,5 +1,6 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+apply plugin: 'maven-publish'
 
 android {
     compileSdkVersion 32
@@ -20,6 +21,23 @@ android {
 repositories {
     // Use Maven Central for resolving dependencies.
     mavenCentral()
+}
+
+publishing {
+    repositories {
+        mavenLocal()
+    }
+    publications {
+        maven(MavenPublication) {
+            groupId 'com.lagradost'
+            artifactId 'nicehttp'
+            version '0.4.2'
+
+            afterEvaluate {
+                from components.release
+            }
+        }
+    }
 }
 
 dependencies {
