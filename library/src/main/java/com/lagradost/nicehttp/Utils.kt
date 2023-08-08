@@ -58,11 +58,11 @@ fun getData(
 
     } else if (json != null) {
 
-        val jsonString = when (json) {
-            is JSONObject -> json.toString()
-            is JSONArray -> json.toString()
-            is String -> json
-            is JsonAsString -> json.string
+        val jsonString = when {
+            json is JSONObject -> json.toString()
+            json is JSONArray -> json.toString()
+            json is String -> json
+            json is JsonAsString -> json.string
             (responseParser != null) -> responseParser!!.writeValueAsString(json)
             else -> json.toString()
         }
