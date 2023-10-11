@@ -2,13 +2,14 @@ package com.lagradost.nicehttp.example
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.nicehttp.Requests
 import com.lagradost.nicehttp.ResponseParser
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.reflect.KClass
 
@@ -23,8 +24,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        lifecycleScope.launch {
-
+        CoroutineScope(Dispatchers.IO).launch {
             /**
              * Implement your own json parsing to then do request.parsed<T>()
              * */
@@ -59,7 +59,8 @@ class MainActivity : AppCompatActivity() {
 
             // Example for json Parser
             val json =
-                requests.get("https://api.github.com/repos/blatzar/nicehttp").parsed<GithubJson>()
+                requests.get("https://api.github.com/repos/blatzar/nicehttp")
+                    .parsed<GithubJson>()
             println("JSON description: ${json.description}")
 
             // Example for Async-ed Requests

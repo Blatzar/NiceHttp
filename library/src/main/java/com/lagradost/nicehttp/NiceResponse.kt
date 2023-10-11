@@ -2,9 +2,9 @@ package com.lagradost.nicehttp
 
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.internal.closeQuietly
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-
 
 val Response.cookies: Map<String, String>
     get() = this.headers.getCookies("set-cookie")
@@ -16,10 +16,15 @@ class NiceResponse(
     val okhttpResponse: Response,
     val parser: ResponseParser?
 ) {
-    /** Lazy, initialized on use. Returns empty string on null. */
-    val text by lazy { okhttpResponse.body.string() }
+    /** Lazy, initialized on use. Returns empty string on null. Automatically closes the body! */
+    val text by lazy {
+        body.string().also {
+            body.closeQuietly()
+        }
+    }
     val url by lazy { okhttpResponse.request.url.toString() }
     val cookies by lazy { okhttpResponse.cookies }
+    /** Remember to close the body! */
     val body by lazy { okhttpResponse.body }
 
     /** Return code */
