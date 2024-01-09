@@ -126,7 +126,9 @@ open class Requests(
             .callTimeout(timeout, TimeUnit.SECONDS)
         if (timeout > 0)
             client
-                .callTimeout(timeout, TimeUnit.SECONDS)
+                .connectTimeout(timeout, TimeUnit.SECONDS)
+                .writeTimeout(timeout, TimeUnit.SECONDS)
+                .readTimeout(timeout, TimeUnit.SECONDS)
         if (!verify) client.ignoreAllSSLErrors()
 
         if (interceptor != null) client.addInterceptor(interceptor)
