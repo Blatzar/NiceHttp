@@ -1,3 +1,5 @@
 rootProject.name = 'NiceHttp'
-include ':library', ':app'
+include ':library'
+include ':android-library'
+include ':app'
 include ':cli'
