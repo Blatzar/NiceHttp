@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.lagradost.nicehttp.Requests
 import com.lagradost.nicehttp.ResponseParser
 import kotlinx.coroutines.CoroutineScope
@@ -15,8 +16,8 @@ import kotlin.reflect.KClass
 
 data class GithubJson(
     @JsonProperty("description") val description: String,
-    @JsonProperty("html_url") val html_url: String,
-    @JsonProperty("stargazers_count") val stargazers_count: Int,
+    @JsonProperty("html_url") val htmlUrl: String,
+    @JsonProperty("stargazers_count") val stargazersCount: Int,
     @JsonProperty("private") val private: Boolean
 )
 

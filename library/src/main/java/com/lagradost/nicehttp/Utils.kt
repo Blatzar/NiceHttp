@@ -1,9 +1,8 @@
 package com.lagradost.nicehttp
 
-import android.annotation.SuppressLint
-import android.util.Log
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CompletionHandler
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import okhttp3.*
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -24,8 +23,6 @@ import kotlin.coroutines.resumeWithException
 
 private val mustHaveBody = listOf("POST", "PUT")
 private val cantHaveBody = listOf("GET", "HEAD")
-
-const val TAG = "NiceHttp"
 
 /**
  * Prioritizes:
@@ -63,7 +60,7 @@ fun getData(
             json is JSONArray -> json.toString()
             json is String -> json
             json is JsonAsString -> json.string
-            (responseParser != null) -> responseParser!!.writeValueAsString(json)
+            (responseParser != null) -> responseParser.writeValueAsString(json)
             else -> json.toString()
         }
 
@@ -116,7 +113,7 @@ fun getHeaders(
 
 // https://stackoverflow.com/a/59322754
 fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
-    val naiveTrustManager = @SuppressLint("CustomX509TrustManager")
+    val naiveTrustManager = @Suppress("CustomX509TrustManager")
     object : X509TrustManager {
         override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
         override fun checkClientTrusted(certs: Array<X509Certificate>, authType: String) = Unit
@@ -159,6 +156,7 @@ class ContinuationCallback(
     private val continuation: CancellableContinuation<Response>
 ) : Callback, CompletionHandler {
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun onResponse(call: Call, response: Response) {
         continuation.resume(response, null)
     }

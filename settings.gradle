@@ -1,2 +1,3 @@
 rootProject.name = 'NiceHttp'
 include ':library', ':app'
+include ':cli'
