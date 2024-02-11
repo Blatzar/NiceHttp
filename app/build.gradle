@@ -3,7 +3,7 @@ apply plugin: 'kotlin-android'
 
 android {
     compileSdkVersion 34
-    buildToolsVersion "33.0.0"
+    buildToolsVersion "34.0.0"
 
     defaultConfig {
         applicationId "com.lagradost.nicehttp.example"
