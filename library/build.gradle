@@ -15,7 +15,8 @@ publishing {
         maven(MavenPublication) {
             groupId 'com.lagradost'
             artifactId 'nicehttp'
-            version '0.4.9'
+            version '0.4.10'
+            artifact jar
         }
     }
 }
