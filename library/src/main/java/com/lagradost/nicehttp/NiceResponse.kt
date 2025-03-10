@@ -5,6 +5,7 @@ import okhttp3.Response
 import okhttp3.internal.closeQuietly
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.io.StringWriter
 
 val Response.cookies: Map<String, String>
     get() = this.headers.getCookies("set-cookie")
@@ -16,14 +17,46 @@ class NiceResponse(
     val okhttpResponse: Response,
     val parser: ResponseParser?
 ) {
+    companion object {
+        const val MAX_TEXT_SIZE: Long = 1_000_000
+    }
+
     /** Lazy, initialized on use. Returns empty string on null. Automatically closes the body! */
     val text by lazy {
-        body.string().also {
+        val stream = body.charStream()
+
+        try {
+            val textSize = size
+            if (textSize != null && textSize > MAX_TEXT_SIZE) {
+                throw IllegalStateException("Called .text on a text file with Content-Length > $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
+            }
+
+            val out = StringWriter()
+
+            var charsCopied: Long = 0
+            val buffer = CharArray(DEFAULT_BUFFER_SIZE)
+            var chars = stream.read(buffer)
+
+            while (chars >= 0 && charsCopied < MAX_TEXT_SIZE) {
+                out.write(buffer, 0, chars)
+                charsCopied += chars
+                chars = stream.read(buffer)
+            }
+
+            if (charsCopied >= MAX_TEXT_SIZE) {
+                throw IllegalStateException("Called .text on a text file above $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
+            }
+
+            out.toString()
+        } finally {
+            stream.closeQuietly()
             body.closeQuietly()
         }
     }
+
     val url by lazy { okhttpResponse.request.url.toString() }
     val cookies by lazy { okhttpResponse.cookies }
+
     /** Remember to close the body! */
     val body by lazy { okhttpResponse.body }
 
