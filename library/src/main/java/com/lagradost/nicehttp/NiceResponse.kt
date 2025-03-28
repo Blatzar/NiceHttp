@@ -18,39 +18,50 @@ class NiceResponse(
     val parser: ResponseParser?
 ) {
     companion object {
-        const val MAX_TEXT_SIZE: Long = 1_000_000
+        const val MAX_TEXT_SIZE: Long = 5_000_000 // 5 mb
     }
 
-    /** Lazy, initialized on use. Returns empty string on null. Automatically closes the body! */
-    val text by lazy {
-        val stream = body.charStream()
+    private var consumedBody = false
 
-        try {
-            val textSize = size
-            if (textSize != null && textSize > MAX_TEXT_SIZE) {
-                throw IllegalStateException("Called .text on a text file with Content-Length > $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
+    /** Lazy, initialized on use. Returns empty string on null. Automatically closes the body! Will return textLarge if textLarge has been called before text. */
+    val text: String by lazy {
+        // Prevent race conditions when calling text and textLarge
+        synchronized(this) {
+            if (consumedBody.also { consumedBody = true }) {
+                // Warning is not needed if the user already chose to use the large body
+                // println("Warning: Using text after body is already consumed. Defaulting to textLarge.")
+                return@lazy textLarge
             }
 
-            val out = StringWriter()
+            val stream = body.charStream()
 
-            var charsCopied: Long = 0
-            val buffer = CharArray(DEFAULT_BUFFER_SIZE)
-            var chars = stream.read(buffer)
+            try {
+                val textSize = size
+                if (textSize != null && textSize > MAX_TEXT_SIZE) {
+                    throw IllegalStateException("Called .text on a text file with Content-Length > $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
+                }
 
-            while (chars >= 0 && charsCopied < MAX_TEXT_SIZE) {
-                out.write(buffer, 0, chars)
-                charsCopied += chars
-                chars = stream.read(buffer)
+                val out = StringWriter()
+
+                var charsCopied: Long = 0
+                val buffer = CharArray(DEFAULT_BUFFER_SIZE)
+                var chars = stream.read(buffer)
+
+                while (chars >= 0 && charsCopied < MAX_TEXT_SIZE) {
+                    out.write(buffer, 0, chars)
+                    charsCopied += chars
+                    chars = stream.read(buffer)
+                }
+
+                if (charsCopied >= MAX_TEXT_SIZE) {
+                    throw IllegalStateException("Called .text on a text file above $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
+                }
+
+                out.toString()
+            } finally {
+                stream.closeQuietly()
+                body.closeQuietly()
             }
-
-            if (charsCopied >= MAX_TEXT_SIZE) {
-                throw IllegalStateException("Called .text on a text file above $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
-            }
-
-            out.toString()
-        } finally {
-            stream.closeQuietly()
-            body.closeQuietly()
         }
     }
 
@@ -84,6 +95,37 @@ class NiceResponse(
     inline fun <reified T : Any> parsedSafe(): T? {
         return try {
             return parser!!.parseSafe(this.text, T::class)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /** Same as .text, but without the MAX_TEXT_SIZE limit. Will return text if text is called before textLarge  */
+    val textLarge: String by lazy {
+        // Prevent race conditions when calling text and textLarge
+        synchronized(this) {
+            if (consumedBody.also { consumedBody = true }) {
+                println("Warning: Using textLarge after body is already consumed. Defaulting to text.")
+                text
+            } else {
+                body.string().also { body.closeQuietly() }
+            }
+        }
+    }
+
+    /** Same as .document, but without the MAX_TEXT_SIZE limit */
+    val documentLarge: Document by lazy { Jsoup.parse(textLarge) }
+
+    /** Same as using parsed<T>, but without the MAX_TEXT_SIZE limit  */
+    inline fun <reified T : Any> parsedLarge(): T {
+        return parser!!.parse(this.textLarge, T::class)
+    }
+
+    /** Same as using parsedSafe, but without the MAX_TEXT_SIZE limit */
+    inline fun <reified T : Any> parsedSafeLarge(): T? {
+        return try {
+            return parser!!.parseSafe(this.textLarge, T::class)
         } catch (e: Exception) {
             e.printStackTrace()
             null
