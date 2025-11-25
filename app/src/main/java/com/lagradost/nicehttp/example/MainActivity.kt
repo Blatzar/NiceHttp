@@ -1,6 +1,7 @@
 package com.lagradost.nicehttp.example
 
 import android.os.Bundle
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature
@@ -62,6 +63,10 @@ class MainActivity : AppCompatActivity() {
                 requests.get("https://api.github.com/repos/blatzar/nicehttp")
                     .parsed<GithubJson>()
             println("JSON description: ${json.description}")
+
+            runOnUiThread {
+                findViewById<TextView?>(R.id.textView)?.text = json.description
+            }
 
             // Example for Async-ed Requests
             (0..3).toList().asyncMap {
