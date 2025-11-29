@@ -32,36 +32,7 @@ class NiceResponse(
                 // println("Warning: Using text after body is already consumed. Defaulting to textLarge.")
                 return@lazy textLarge
             }
-
-            val stream = body.charStream()
-
-            try {
-                val textSize = size
-                if (textSize != null && textSize > MAX_TEXT_SIZE) {
-                    throw IllegalStateException("Called .text on a text file with Content-Length > $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
-                }
-
-                val out = StringWriter()
-
-                var charsCopied: Long = 0
-                val buffer = CharArray(DEFAULT_BUFFER_SIZE)
-                var chars = stream.read(buffer)
-
-                while (chars >= 0 && charsCopied < MAX_TEXT_SIZE) {
-                    out.write(buffer, 0, chars)
-                    charsCopied += chars
-                    chars = stream.read(buffer)
-                }
-
-                if (charsCopied >= MAX_TEXT_SIZE) {
-                    throw IllegalStateException("Called .text on a text file above $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. To avoid this use .body")
-                }
-
-                out.toString()
-            } finally {
-                stream.closeQuietly()
-                body.closeQuietly()
-            }
+            OkioHelper.readLimited(body, MAX_TEXT_SIZE)
         }
     }
 
