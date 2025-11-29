@@ -16,11 +16,11 @@ publishing {
         mavenLocal()
     }
     publications {
-        withType<MavenPublication> {
+        create<MavenPublication>("maven") {
             groupId = "com.lagradost"
             artifactId= "nicehttp"
-            version= "0.4.13"
-            //from(components.java)
+            version= "0.4.14"
+            from(components["java"])
         }
     }
 }
