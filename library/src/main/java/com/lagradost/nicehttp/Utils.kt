@@ -107,7 +107,8 @@ fun getHeaders(
             "Cookie" to cookie.entries.joinToString(" ") {
                 "${it.key}=${it.value};"
             }) else mapOf()
-    val tempHeaders = (headers + cookieMap + refererMap)
+    // Handle case-insensitive header names by keeping only the last occurrence in lowercase
+    val tempHeaders = (headers + cookieMap + refererMap).mapKeys { it.key.lowercase() }
     return tempHeaders.toHeaders()
 }
 
