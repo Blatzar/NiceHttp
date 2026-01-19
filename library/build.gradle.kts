@@ -19,7 +19,7 @@ publishing {
         create<MavenPublication>("maven") {
             groupId = "com.lagradost"
             artifactId= "nicehttp"
-            version= "0.4.14"
+            version= "0.4.15"
             from(components["java"])
         }
     }
