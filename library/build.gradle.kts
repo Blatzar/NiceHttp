@@ -60,8 +60,17 @@ kotlin {
 }
 
 java {
-    sourceCompatibility = JavaVersion.toVersion(JavaVersion.VERSION_1_8)
-    targetCompatibility = JavaVersion.toVersion(JavaVersion.VERSION_1_8)
+    // ensures Gradle uses JDK 17 to compile the code
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
+}
+
+// https://docs.gradle.org/current/userguide/toolchains.html#combining_toolchains
+tasks.withType<JavaCompile>().configureEach {
+    // forces the compiler to generate bytecode compatible with Java 8
+    // (prevents accidental use of newer APIs)
+    options.release.set(8)
 }
 
 buildscript {
