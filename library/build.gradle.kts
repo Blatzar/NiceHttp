@@ -18,8 +18,14 @@ publishing {
     publications {
         create<MavenPublication>("maven") {
             groupId = "com.lagradost"
-            artifactId= "nicehttp"
-            version= "0.4.15"
+            artifactId = "nicehttp"
+            version = "0.4.15"
+            from(components["java"])
+        }
+        create<MavenPublication>("jitpack") {
+            groupId = "com.github.Blatzar" // jipack uses the GitHub username as groupId
+            artifactId = "nicehttp"
+            version = "0.4.15"
             from(components["java"])
         }
     }
