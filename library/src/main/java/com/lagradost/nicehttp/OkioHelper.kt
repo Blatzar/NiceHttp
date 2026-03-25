@@ -66,7 +66,7 @@ object OkioHelper {
                 val size = source.buffer.writeMax(sourceField, max)
                 if (size >= max) {
                     throw IllegalStateException("Called .text on a text file with Content-Length > $max bytes, this throws an exception to prevent OOM. " +
-                            "To avoid this use .body/textLarge/documentLarge")
+                            "If you know what you are doing, use .body/textLarge/documentLarge to download larger files")
                 }
                 source.buffer.readString(charset)
             } catch (t: SecurityException) {

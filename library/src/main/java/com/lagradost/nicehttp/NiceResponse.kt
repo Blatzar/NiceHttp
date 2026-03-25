@@ -5,7 +5,6 @@ import okhttp3.Response
 import okhttp3.internal.closeQuietly
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import java.io.StringWriter
 
 val Response.cookies: Map<String, String>
     get() = this.headers.getCookies("set-cookie")
@@ -32,6 +31,13 @@ class NiceResponse(
                 // println("Warning: Using text after body is already consumed. Defaulting to textLarge.")
                 return@lazy textLarge
             }
+            val size = size
+            if (size != null && size > MAX_TEXT_SIZE) {
+                throw IllegalStateException(
+                    "Called .text on a text file with Content-Length header > $MAX_TEXT_SIZE bytes, this throws an exception to prevent OOM. " +
+                            "If you know what you are doing, use .body/textLarge/documentLarge to download larger files"
+                )
+            }
             OkioHelper.readLimited(body, MAX_TEXT_SIZE)
         }
     }
@@ -48,8 +54,8 @@ class NiceResponse(
 
     /** Size, as reported by Content-Length */
     val size by lazy {
-        (okhttpResponse.headers["Content-Length"]
-            ?: okhttpResponse.headers["content-length"])?.toLongOrNull()
+        // the get operator for headers is case insensitive
+        okhttpResponse.headers["content-length"]?.toLongOrNull()
     }
 
     val isSuccessful = okhttpResponse.isSuccessful
