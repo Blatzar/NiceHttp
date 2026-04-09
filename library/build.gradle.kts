@@ -19,13 +19,13 @@ publishing {
         create<MavenPublication>("maven") {
             groupId = "com.lagradost"
             artifactId = "nicehttp"
-            version = "0.4.17"
+            version = "0.4.18"
             from(components["java"])
         }
         create<MavenPublication>("jitpack") {
             groupId = "com.github.Blatzar" // jipack uses the GitHub username as groupId
             artifactId = "nicehttp"
-            version = "0.4.17"
+            version = "0.4.18"
             from(components["java"])
         }
     }
@@ -44,10 +44,10 @@ kotlin {
 
     sourceSets {
         dependencies {
-            val kotlinVersion = "2.2.0"
+            val kotlinVersion = "2.3.20"
 
             // Parsing HTML
-            api("org.jsoup:jsoup:1.21.2")
+            api("org.jsoup:jsoup:1.22.1")
 
             // Parsing JSON
             /** Do not update to 2.13.2 it breaks compatibility with android < 24 !!! */
@@ -60,7 +60,7 @@ kotlin {
             // Async
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
             implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-            implementation("org.json:json:20250517")
+            implementation("org.json:json:20251224")
         }
     }
 }
@@ -84,7 +84,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        val kotlinVersion = "2.2.0"
+        val kotlinVersion = "2.3.20"
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
     }
 }
